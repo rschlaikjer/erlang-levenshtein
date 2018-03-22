@@ -11,9 +11,9 @@ Eshell V8.2.1  (abort with ^G)
 1> c('src/perftest').
 {ok,perftest}
 2> perftest:perftest(100000, fun perftest:erlang_perftest_loop/1).
-0.20419880963957932
+204.19880963957932
 3> perftest:perftest(100000, fun perftest:native_perftest_loop/1).
-284.19646062523685
+284196.46062523685
 ```
 
 Test code:
@@ -30,7 +30,7 @@ perftest(Iterations, Method) ->
     Start = os:system_time(),
     Method(Iterations),
     Diff = os:system_time() - Start,
-    (Iterations / Diff) * 1000000.
+    (Iterations / Diff) * 1000000000.
 
 native_perftest_loop(0) -> ok;
 native_perftest_loop(I) ->
