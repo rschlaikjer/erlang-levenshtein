@@ -3,6 +3,12 @@ Levenshtein NIF
 
 C NIF of the Levenshtein edit distance.
 
+Add as a rebar dependency:
+
+```erlang
+{levenshtein, "0.2.0", {git, "https://github.com/rschlaikjer/erlang-levenshtein.git", {tag, "0.2.0"}}}
+```
+
 On a simple test case, this NIF performs multiple orders of magnitude better
 than a pure erlang implementation.
 
