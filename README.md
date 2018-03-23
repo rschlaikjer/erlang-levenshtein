@@ -1,9 +1,10 @@
-Levenshtein NIF
+Erlang Levenshtein Distance NIF
 =====
 
-C NIF of the Levenshtein edit distance.
+Native C implementation of the Levenshtein edit distance, easily importable
+into your Erlang project using rebar.
 
-Add as a rebar dependency:
+Add as a dependency:
 
 ```erlang
 {levenshtein, "0.2.0", {git, "https://github.com/rschlaikjer/erlang-levenshtein.git", {tag, "0.2.0"}}}
