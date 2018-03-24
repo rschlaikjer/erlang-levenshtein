@@ -4,7 +4,9 @@
 #include <string.h>
 #include "erl_nif.h"
 
+// Macros for use in levenshtein
 #define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
+#define MATRIX_ELEMENT(matrix, xsize, x, y) (matrix[(x) * (xsize) + (y)])
 
 // Exported methods
 static ERL_NIF_TERM erl_levenshtein(
@@ -22,12 +24,6 @@ int levenshtein_impl(unsigned char *s1, unsigned s1len,
                      unsigned char *s2, unsigned s2len,
                      unsigned int *matrix);
 
-// Helpers for matrices
-void set_matrix_element(unsigned int *matrix, unsigned int xsize,
-                        unsigned int x, unsigned int y,
-                        unsigned int value);
-unsigned int get_matrix_element(unsigned int *matrix, unsigned int xsize,
-                                unsigned int x, unsigned int y);
 // Internal term manipulation
 ERL_NIF_TERM mk_atom(ErlNifEnv* env, const char* atom);
 ERL_NIF_TERM mk_error(ErlNifEnv* env, const char* mesg);

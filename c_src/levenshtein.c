@@ -70,17 +70,6 @@ int levenshtein(unsigned char *s1, unsigned s1len,
     }
 }
 
-void set_matrix_element(unsigned int *matrix, unsigned int xsize,
-                        unsigned int x, unsigned int y,
-                        unsigned int value) {
-    matrix[x * xsize + y] = value;
-}
-
-unsigned int get_matrix_element(unsigned int *matrix, unsigned int xsize,
-                                unsigned int x, unsigned int y) {
-    return matrix[x * xsize + y];
-}
-
 int levenshtein_impl(unsigned char *s1, unsigned s1len,
                      unsigned char *s2, unsigned s2len,
                      unsigned int *matrix) {
@@ -88,31 +77,23 @@ int levenshtein_impl(unsigned char *s1, unsigned s1len,
     unsigned int x, y;
     matrix[0] = 0;
     for (x = 1; x <= s2len; x++) {
-        set_matrix_element(
-            matrix, xsize, x, 0,
-            get_matrix_element(matrix, xsize, x-1, 0) + 1
-        );
+        MATRIX_ELEMENT(matrix, xsize, x, 0) = \
+            MATRIX_ELEMENT(matrix, xsize, x - 1, 0) + 1;
     }
     for (y = 1; y <= s1len; y++) {
-        set_matrix_element(
-            matrix, xsize, 0, y,
-            get_matrix_element(matrix, xsize, 0, y - 1) + 1
-        );
+        MATRIX_ELEMENT(matrix, xsize, 0, y) = \
+            MATRIX_ELEMENT(matrix, xsize, 0, y - 1) + 1;
     }
     for (x = 1; x <= s2len; x++) {
         for (y = 1; y <= s1len; y++) {
-            set_matrix_element(
-                matrix, xsize,
-                x, y,
-                MIN3(
-                    get_matrix_element(matrix, xsize, x-1, y) + 1,
-                    get_matrix_element(matrix, xsize, x, y-1) + 1,
-                    get_matrix_element(matrix, xsize, x-1, y-1) +
-                        (s1[y-1] == s2[x-1] ? 0 : 1)
-                )
+            MATRIX_ELEMENT(matrix, xsize, x, y) = MIN3(
+                MATRIX_ELEMENT(matrix, xsize, x-1, y) + 1,
+                MATRIX_ELEMENT(matrix, xsize, x, y-1) + 1,
+                MATRIX_ELEMENT(matrix, xsize, x-1, y-1) +
+                    (s1[y-1] == s2[x-1] ? 0 : 1)
             );
         }
     }
 
-    return get_matrix_element(matrix, xsize, s2len, s1len);
+    return MATRIX_ELEMENT(matrix, xsize, s2len, s1len);
 }
