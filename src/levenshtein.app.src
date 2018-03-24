@@ -1,6 +1,6 @@
 {application, levenshtein,
  [{description, "Native Levenshtein implementation"},
-  {vsn, "0.4.0"},
+  {vsn, "0.5.0"},
   {registered, []},
   {applications,
    [kernel,

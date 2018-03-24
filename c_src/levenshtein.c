@@ -31,6 +31,13 @@ static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM
     enif_inspect_binary(env, argv[0], &binary1);
     enif_inspect_binary(env, argv[1], &binary2);
 
+    // Check if we can shortcut some logic
+    if (binary1.size == 0) {
+        return enif_make_int(env, binary2.size);
+    } else if (binary2.size == 0) {
+        return enif_make_int(env, binary1.size);
+    }
+
     // Calculate the distance
     int editDistance = levenshtein(
         binary1.data, binary1.size,

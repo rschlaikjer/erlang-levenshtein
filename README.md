@@ -7,7 +7,7 @@ into your Erlang project using rebar.
 Add as a dependency:
 
 ```erlang
-{levenshtein, "0.4.0", {git, "https://github.com/rschlaikjer/erlang-levenshtein.git", {tag, "0.4.0"}}}
+{levenshtein, "0.5.0", {git, "https://github.com/rschlaikjer/erlang-levenshtein.git", {tag, "0.5.0"}}}
 ```
 
 On a simple test case, this NIF performs multiple orders of magnitude better
