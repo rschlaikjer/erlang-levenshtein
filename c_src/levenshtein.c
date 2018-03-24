@@ -1,21 +1,4 @@
-#include <string.h>
-
-#include "erl_nif.h"
-
-#define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
-
-int levenshtein(unsigned char *s1, unsigned s1len,
-                unsigned char *s2, unsigned s2len);
-
-int levenshtein_stack(unsigned char *s1, unsigned s1len,
-                      unsigned char *s2, unsigned s2len);
-
-int levenshtein_heap(unsigned char *s1, unsigned s1len,
-                     unsigned char *s2, unsigned s2len);
-
-int levenshtein_impl(unsigned char *s1, unsigned s1len,
-                     unsigned char *s2, unsigned s2len,
-                     unsigned int *matrix);
+#include "levenshtein.h"
 
 ERL_NIF_TERM mk_atom(ErlNifEnv* env, const char* atom) {
     ERL_NIF_TERM ret;
@@ -57,54 +40,39 @@ static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM
     return enif_make_int(env, editDistance);
 }
 
-static ErlNifFunc nif_funcs[] = {
-    {"levenshtein", 2, erl_levenshtein}
-};
-
 // Module callbacks
-int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
+int load(ErlNifEnv* _env, void** priv_data, ERL_NIF_TERM load_info) {
     return 0;
 }
 
-int upgrade(ErlNifEnv* env, void** priv_data, void** old_priv_data, ERL_NIF_TERM load_info) {
+int upgrade(ErlNifEnv* env, void** priv_data,
+            void** old_priv_data, ERL_NIF_TERM load_info) {
     return 0;
 }
 
 void unload(ErlNifEnv* env, void* priv_data){
 }
 
-
-ERL_NIF_INIT(levenshtein, nif_funcs, load, NULL, upgrade, unload);
-
+// Actual implementation
 int levenshtein(unsigned char *s1, unsigned s1len,
                 unsigned char *s2, unsigned s2len) {
     // If the matrix is over 1Kib, allocate it on the heap
     if (s1len * s2len > 1024) {
-        return levenshtein_heap(s1, s1len, s2, s2len);
+        unsigned int *matrix = malloc(
+            sizeof(unsigned int) * (s1len + 1) * (s2len + 1)
+        );
+        int result = levenshtein_impl(s1, s1len, s2, s2len, matrix);
+        free(matrix);
+        return result;
     } else {
-        return levenshtein_stack(s1, s1len, s2, s2len);
+        unsigned int matrix[s2len+1][s1len+1];
+        return levenshtein_impl(s1, s1len, s2, s2len, (unsigned int *) matrix);
     }
 }
 
-int levenshtein_stack(unsigned char *s1, unsigned s1len,
-                      unsigned char *s2, unsigned s2len) {
-    unsigned int matrix[s2len+1][s1len+1];
-    return levenshtein_impl(s1, s1len, s2, s2len, (unsigned int *) matrix);
-}
-
-int levenshtein_heap(unsigned char *s1, unsigned s1len,
-                      unsigned char *s2, unsigned s2len) {
-    unsigned int *matrix = malloc(
-        sizeof(unsigned int) * (s1len + 1) * (s2len + 1)
-    );
-    int result = levenshtein_impl(s1, s1len, s2, s2len, matrix);
-    free(matrix);
-    return result;
-}
-
 void set_matrix_element(unsigned int *matrix, unsigned int xsize,
-                     unsigned int x, unsigned int y,
-                     unsigned int value) {
+                        unsigned int x, unsigned int y,
+                        unsigned int value) {
     matrix[x * xsize + y] = value;
 }
 
@@ -133,17 +101,14 @@ int levenshtein_impl(unsigned char *s1, unsigned s1len,
     }
     for (x = 1; x <= s2len; x++) {
         for (y = 1; y <= s1len; y++) {
-            //matrix[x][y] = MIN3(
             set_matrix_element(
                 matrix, xsize,
                 x, y,
                 MIN3(
-                    // matrix[x-1][y] + 1,
                     get_matrix_element(matrix, xsize, x-1, y) + 1,
-                    // matrix[x][y-1] + 1,
                     get_matrix_element(matrix, xsize, x, y-1) + 1,
-                    // matrix[x-1][y-1] + (s1[y-1] == s2[x-1] ? 0 : 1)
-                    get_matrix_element(matrix, xsize, x-1, y-1) + (s1[y-1] == s2[x-1] ? 0 : 1)
+                    get_matrix_element(matrix, xsize, x-1, y-1) +
+                        (s1[y-1] == s2[x-1] ? 0 : 1)
                 )
             );
         }
