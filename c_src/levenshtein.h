@@ -2,14 +2,46 @@
 #define LEVENSHTEIN_H
 
 #include <string.h>
+#include <stdio.h>
+#include <time.h>
+
 #include "erl_nif.h"
+
+const unsigned long TIMESLICE_NANOSECONDS = 1000000; // 1ms
 
 // Macros for use in levenshtein
 #define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
 #define MATRIX_ELEMENT(matrix, xsize, x, y) (matrix[(x) * (xsize) + (y)])
 
-// Exported methods
+struct PrivData {
+    // The resource type created for allocating LevenshteinState
+    // structs on the erlang heap
+    ErlNifResourceType *levenshtein_state_resource;
+};
+
+// Struct for bookkeeping of calculation state between scheduler yields
+struct LevenshteinState {
+    // The matrix being used to calculate the distance
+    unsigned int *matrix;
+
+    // The input strings + their sizes
+    unsigned char *s1;
+    unsigned s1len;
+    unsigned char *s2;
+    unsigned s2len;
+
+    // The index of the last processed row of the matrix,
+    // so that the next iteration can pick up where we left off
+    unsigned int lastX;
+};
+
+// Exported entry method
 static ERL_NIF_TERM erl_levenshtein(
+    ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
+);
+
+// Unexported NIF used for breaking up the work into chunks
+static ERL_NIF_TERM erl_levenshtein_yielding(
     ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]
 );
 
