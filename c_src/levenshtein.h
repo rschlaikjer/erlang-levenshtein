@@ -9,9 +9,17 @@
 
 const unsigned long TIMESLICE_NANOSECONDS = 1000000; // 1ms
 
+// How many matrix operations we will allow ourselves to do in between
+// checking the time and whether we've maxed our slice
+const unsigned long OPERATIONS_BETWEN_TIMECHEKS = 10000;
+
 // Macros for use in levenshtein
 #define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
 #define MATRIX_ELEMENT(matrix, xsize, x, y) (matrix[(x) * (xsize) + (y)])
+
+// Branch hinting macros
+#define likely(x)    __builtin_expect(!!(x), 1)
+#define unlikely(x)  __builtin_expect(!!(x), 0)
 
 struct PrivData {
     // The resource type created for allocating LevenshteinState
@@ -33,6 +41,7 @@ struct LevenshteinState {
     // The index of the last processed row of the matrix,
     // so that the next iteration can pick up where we left off
     unsigned int lastX;
+    unsigned int lastY;
 };
 
 // Exported entry method

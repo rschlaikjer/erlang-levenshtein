@@ -60,6 +60,7 @@ static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM
     state->s2 = binary2.data;
     state->s2len = binary2.size;
     state->lastX = 1;
+    state->lastY = 1;
 
     // Initialize the starting state of the matrix inline, since this should be
     // fairly quick - only O(n + m)
@@ -127,65 +128,89 @@ static ERL_NIF_TERM erl_levenshtein_yielding(ErlNifEnv* env, int argc,
 
     // Start processing wherever the previous slice left off
     const unsigned int xsize = state->s1len + 1;
-    unsigned int x, y;
+    unsigned int x = state->lastX;
+    unsigned int y = state->lastY;
 
     // Specs for tracking function runtime
     struct timespec start_time;
     struct timespec current_time;
 
-    // Loop over the matrix, starting at the X value set in the state
-    for (x = state->lastX; x <= state->s2len; x++) {
-        //  Get the loop start time
-        clock_gettime(CLOCK_MONOTONIC, &start_time);
+    // Grab the function start time
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
 
-        // Handle the next column
+    // Create a tracker for the number of loop iterations we've done
+    unsigned long operations = 0;
+
+    // This is a bit slimy, but is the simplest way to preload
+    // the x and y loop vars without extra conditionals
+    goto loop_inner;
+
+    // Loop over the matrix
+    for (x = state->lastX; x <= state->s2len; x++) {
         for (y = 1; y <= state->s1len; y++) {
+loop_inner:
             MATRIX_ELEMENT(state->matrix, xsize, x, y) = MIN3(
                 MATRIX_ELEMENT(state->matrix, xsize, x-1, y) + 1,
                 MATRIX_ELEMENT(state->matrix, xsize, x, y-1) + 1,
                 MATRIX_ELEMENT(state->matrix, xsize, x-1, y-1) +
                     (state->s1[y-1] == state->s2[x-1] ? 0 : 1)
             );
-        }
 
-        // Every time we complete a row, check if we've consumed our entire
-        // timeslice yet.
-        // Get the current time
-        clock_gettime(CLOCK_MONOTONIC, &current_time);
+            // Check if it's time to check on our slice status
+            if (unlikely(operations++ > OPERATIONS_BETWEN_TIMECHEKS)) {
+                // Get the current time
+                clock_gettime(CLOCK_MONOTONIC, &current_time);
 
-        // Figure out how many nanoseconds have passed since the last checkpoint
-        unsigned long nanoseconds_diff = (
-            (current_time.tv_nsec - start_time.tv_nsec) +
-            (current_time.tv_sec - start_time.tv_sec) * 1000000000
-        );
+                // Figure out how many nanoseconds have passed since the last
+                // checkpoint
+                unsigned long nanoseconds_diff = (
+                    (current_time.tv_nsec - start_time.tv_nsec) +
+                    (current_time.tv_sec - start_time.tv_sec) * 1000000000
+                );
 
-        // Convert that to a percentage of a timeslice
-        int slice_percent = nanoseconds_diff / TIMESLICE_NANOSECONDS;
-        if (slice_percent < 0) {
-            slice_percent = 0;
-        } else if (slice_percent > 100) {
-            slice_percent = 100;
-        }
+                // Convert that to a percentage of a timeslice
+                int slice_percent = nanoseconds_diff / TIMESLICE_NANOSECONDS;
+                if (slice_percent < 1) {
+                    slice_percent = 1;
+                } else if (slice_percent > 100) {
+                    slice_percent = 100;
+                }
 
-        // Consume that amount of a timeslice.
-        // If the result is 1, then we have consumed the entire slice and should
-        // yield.
-        if (enif_consume_timeslice(env, slice_percent)) {
-            // Update the state with the next row value to process
-            state->lastX = x + 1;
+                // Consume that amount of a timeslice.
+                // If the result is 1, then we have consumed the entire slice and should
+                // yield.
+                if (enif_consume_timeslice(env, slice_percent)) {
+                    goto loop_exit;
+                }
 
-            // Yield another call to ourselves
-            return enif_schedule_nif(
-                env,
-                "levenshtein_yielding", // NIF to call
-                0, // Flags
-                erl_levenshtein_yielding,
-                1,
-                argv
-            );
+                // If we're not done, shift the times over and keep looping
+                start_time.tv_sec = current_time.tv_sec;
+                start_time.tv_nsec = current_time.tv_nsec;
+                operations = 0;
+            }
         }
     }
 
+loop_exit:
+    // If we exited the loop via jump, we must have run out of time
+    // in this slice. Update our state and yield the next cycle.
+    if (likely(x <= state->s2len || y <= state->s1len)) {
+        // Update the state with the next row value to process
+        state->lastX = x;
+        state->lastY = y;
+
+        // Yield another call to ourselves
+        return enif_schedule_nif(
+            env,
+            "levenshtein_yielding", // NIF to call
+            0, // Flags
+            erl_levenshtein_yielding,
+            1,
+            argv
+        );
+    }
+
+    // If we are done, grab the result
     unsigned int result = MATRIX_ELEMENT(
         state->matrix, xsize, state->s2len, state->s1len);
 
