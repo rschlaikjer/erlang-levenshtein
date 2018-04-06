@@ -169,7 +169,7 @@ loop_inner:
                 );
 
                 // Convert that to a percentage of a timeslice
-                int slice_percent = nanoseconds_diff / TIMESLICE_NANOSECONDS;
+                int slice_percent = (nanoseconds_diff * 100) / TIMESLICE_NANOSECONDS;
                 if (slice_percent < 1) {
                     slice_percent = 1;
                 } else if (slice_percent > 100) {

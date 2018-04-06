@@ -11,7 +11,7 @@ const unsigned long TIMESLICE_NANOSECONDS = 1000000; // 1ms
 
 // How many matrix operations we will allow ourselves to do in between
 // checking the time and whether we've maxed our slice
-const unsigned long OPERATIONS_BETWEN_TIMECHEKS = 10000;
+const unsigned long OPERATIONS_BETWEN_TIMECHEKS = 50000;
 
 // Macros for use in levenshtein
 #define MIN3(a, b, c) ((a) < (b) ? ((a) < (c) ? (a) : (c)) : ((b) < (c) ? (b) : (c)))
