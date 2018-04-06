@@ -62,16 +62,28 @@ static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM
     state->lastX = 1;
     state->lastY = 1;
 
-    // Initialize the starting state of the matrix inline, since this should be
-    // fairly quick - only O(n + m)
-
+    // Check how large our matrix is, and if it's small then initialize it
+    // inline to avoid the performance hit of yielding
     state->matrix[0] = 0;
-    unsigned int x, y;
-    for (x = 1; x <= binary2.size; x++) {
-        MATRIX_ELEMENT(state->matrix, binary1.size + 1, x, 0) = x;
-    }
-    for (y = 1; y <= binary1.size; y++) {
-        MATRIX_ELEMENT(state->matrix, binary1.size + 1, 0, y) = y;
+    if (binary1.size + binary2.size < INLINE_MATRIX_INIT_SIZE_CUTOFF) {
+        // If the matrix is 'small', then initialize the edges now
+        unsigned int x, y;
+        for (x = 1; x <= binary2.size; x++) {
+            MATRIX_ELEMENT(state->matrix, binary1.size + 1, x, 0) = x;
+        }
+        for (y = 1; y <= binary1.size; y++) {
+            MATRIX_ELEMENT(state->matrix, binary1.size + 1, 0, y) = y;
+        }
+
+        // Mark the matrix as initialized
+        state->matrix_initialized = 1;
+    } else {
+        // If it's not, then zero the initializer state in the work spec
+        // and set a flag indicating we should yield the init function and not
+        // the work function.
+        state->initializerX = 1;
+        state->initializerY = 1;
+        state->matrix_initialized = 0;
     }
 
     // Now that we're just about done, time to figure out how much time we took
@@ -83,7 +95,7 @@ static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM
     );
 
     // Convert that to a percentage of a timeslice
-    int slice_percent = nanoseconds_diff / TIMESLICE_NANOSECONDS;
+    int slice_percent = (nanoseconds_diff * 100) / TIMESLICE_NANOSECONDS;
     if (slice_percent < 0) {
         slice_percent = 0;
     } else if (slice_percent > 100) {
@@ -93,18 +105,144 @@ static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM
     // Consume that amount of a timeslice.
     enif_consume_timeslice(env, slice_percent);
 
-    // Now yield the work function
-    // with the state as a term
+    // Depending on whether or not we initialized the matrix earlier, yield
+    // either the initialization method or the work method.
     ERL_NIF_TERM state_term = enif_make_resource(env, state);
     const ERL_NIF_TERM args[] = {state_term};
+    if (state->matrix_initialized) {
+        // Yield the work function
+        return enif_schedule_nif(
+            env,
+            "levenshtein_yielding", // NIF to call
+            0, // Flags
+            erl_levenshtein_yielding,
+            1,
+            args
+        );
+    } else {
+        // Yield the work function
+        return enif_schedule_nif(
+            env,
+            "levenshtein_yielding", // NIF to call
+            0, // Flags
+            erl_levenshtein_init_yielding,
+            1,
+            args
+        );
+    }
+}
+
+static ERL_NIF_TERM erl_levenshtein_init_yielding(ErlNifEnv* env, int argc,
+                                                  const ERL_NIF_TERM argv[]) {
+    // Initialize the matrix for the levenshtein calculation in a yielding
+    // manner. Necessary when initializing 'large' matrices that would take
+    // more than 1ms to iterate over.
+    if (argc != 1) {
+        return enif_make_badarg(env);
+    }
+
+    // Extract the state term
+    struct PrivData *priv_data = enif_priv_data(env);
+    struct LevenshteinState* state;
+    if (!enif_get_resource(env, argv[0],
+                           priv_data->levenshtein_state_resource,
+                           ((void*) (&state)))) {
+        return mk_error(env, "bad_internal_state");
+    }
+
+    // Timekeeping
+    struct timespec start_time;
+    struct timespec og_start_time;
+    struct timespec current_time;
+
+    // Grab the function start time
+    clock_gettime(CLOCK_MONOTONIC, &og_start_time);
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
+
+    // Create a tracker for the number of loop iterations we've done
+    unsigned long operations = 0;
+
+    unsigned int x, y;
+    for (x = state->initializerX; x <= state->s2len; x++) {
+        MATRIX_ELEMENT(state->matrix, state->s1len + 1, x, 0) = x;
+
+        // Check if we need to yield
+        if (test_and_incr_reductions(env, &operations, &current_time, &start_time)) {
+            // If so, update the current X/Y state
+            state->initializerX = x;
+            return enif_schedule_nif(
+                env, "levenshtein_yielding", 0,
+                erl_levenshtein_init_yielding,
+                argc, argv
+            );
+        }
+    }
+    for (y = state->initializerY; y <= state->s1len; y++) {
+        MATRIX_ELEMENT(state->matrix, state->s1len + 1, 0, y) = y;
+
+        // Check if we need to yield
+        if (test_and_incr_reductions(env, &operations, &current_time, &start_time)) {
+            // If so, update the current X/Y state
+            state->initializerX = x;
+            state->initializerY = y;
+            return enif_schedule_nif(
+                env, "levenshtein_yielding", 0,
+                erl_levenshtein_init_yielding,
+                argc, argv
+            );
+        }
+    }
+
+    // If initialization is complete, yeild the work function
     return enif_schedule_nif(
         env,
         "levenshtein_yielding", // NIF to call
         0, // Flags
         erl_levenshtein_yielding,
-        1,
-        args
+        argc, argv
     );
+}
+
+static inline int test_and_incr_reductions(ErlNifEnv* env,
+                                           unsigned long *operations,
+                                           struct timespec *current_time,
+                                           struct timespec *start_time) {
+    // Check if it's time to check on our slice status
+    if (likely((*operations)++ < INIT_OPERATIONS_BETWEN_TIMECHEKS)) {
+        return 0;
+    }
+
+    // Get the current time
+    clock_gettime(CLOCK_MONOTONIC, current_time);
+
+    // Figure out how many nanoseconds have passed since the last
+    // checkpoint
+    unsigned long nanoseconds_diff = (
+        (current_time->tv_nsec - start_time->tv_nsec) +
+        (current_time->tv_sec - start_time->tv_sec) * 1000000000
+    );
+
+    // Convert that to a percentage of a timeslice
+    int slice_percent = (nanoseconds_diff * 100) / TIMESLICE_NANOSECONDS;
+    if (slice_percent < 1) {
+        slice_percent = 1;
+    } else if (slice_percent > 100) {
+        slice_percent = 100;
+    }
+
+    // Consume that amount of a timeslice.
+    // If the result is 1, then we have consumed the entire slice and should
+    // yield.
+    if (enif_consume_timeslice(env, slice_percent)) {
+        return 1;
+    }
+
+    // If we're not done, shift the times over and keep looping
+    start_time->tv_sec = current_time->tv_sec;
+    start_time->tv_nsec = current_time->tv_nsec;
+    *operations = 0;
+
+    return 0;
 }
 
 static ERL_NIF_TERM erl_levenshtein_yielding(ErlNifEnv* env, int argc,
@@ -224,7 +362,7 @@ loop_exit:
 }
 
 // Module callbacks
-int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
+int load(ErlNifEnv* env, void** priv_data, UNUSED ERL_NIF_TERM load_info) {
     // We need to create a new resource type for the computation state
     // we pass around.
     ErlNifResourceFlags tried;
@@ -254,13 +392,13 @@ int load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info) {
     return 0;
 }
 
-int upgrade(ErlNifEnv* env, void** priv_data,
-            void** old_priv_data, ERL_NIF_TERM load_info) {
+int upgrade(UNUSED ErlNifEnv* env, UNUSED void** priv_data,
+            UNUSED void** old_priv_data, UNUSED ERL_NIF_TERM load_info) {
     // Nothing needs to be done when the module is reloaded
     return 0;
 }
 
-void unload(ErlNifEnv* env, void* priv_data){
+void unload(UNUSED ErlNifEnv* env, void* priv_data){
     // We need to free priv_data, which is a pointer to our PrivData struct
     free(priv_data);
 }
