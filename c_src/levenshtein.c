@@ -14,7 +14,7 @@ ERL_NIF_TERM mk_error(ErlNifEnv* env, const char* mesg) {
 
 static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     // Get the method start time so that we can account for time slices
-    // we cosume
+    // we consume
     struct timespec start_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
@@ -152,11 +152,9 @@ static ERL_NIF_TERM erl_levenshtein_init_yielding(ErlNifEnv* env, int argc,
 
     // Timekeeping
     struct timespec start_time;
-    struct timespec og_start_time;
     struct timespec current_time;
 
     // Grab the function start time
-    clock_gettime(CLOCK_MONOTONIC, &og_start_time);
     clock_gettime(CLOCK_MONOTONIC, &start_time);
 
     // Create a tracker for the number of loop iterations we've done
