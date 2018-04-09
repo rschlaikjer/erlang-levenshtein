@@ -78,17 +78,6 @@ static inline int test_and_incr_reductions(ErlNifEnv* env,
                                            struct timespec *current_time,
                                            struct timespec *start_time);
 
-// Actual levenshtein implementation
-int levenshtein(unsigned char *s1, unsigned s1len,
-                unsigned char *s2, unsigned s2len);
-int levenshtein_stack(unsigned char *s1, unsigned s1len,
-                      unsigned char *s2, unsigned s2len);
-int levenshtein_heap(unsigned char *s1, unsigned s1len,
-                     unsigned char *s2, unsigned s2len);
-int levenshtein_impl(unsigned char *s1, unsigned s1len,
-                     unsigned char *s2, unsigned s2len,
-                     unsigned int *matrix);
-
 // Internal term manipulation
 ERL_NIF_TERM mk_atom(ErlNifEnv* env, const char* atom);
 ERL_NIF_TERM mk_error(ErlNifEnv* env, const char* mesg);
