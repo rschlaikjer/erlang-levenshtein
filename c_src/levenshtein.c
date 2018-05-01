@@ -55,6 +55,11 @@ static ERL_NIF_TERM erl_levenshtein(ErlNifEnv* env, int argc, const ERL_NIF_TERM
         sizeof(unsigned int) * (binary1.size + 1) * (binary2.size + 1)
     );
     state->matrix = malloc(matrix_size);
+    if (!state->matrix) {
+        // Failed to malloc! Must be trying to grab an excessively large matrix.
+        enif_release_resource(state);
+        return mk_error(env, "malloc_failed");
+    }
     state->s1 = binary1.data;
     state->s1len = binary1.size;
     state->s2 = binary2.data;
